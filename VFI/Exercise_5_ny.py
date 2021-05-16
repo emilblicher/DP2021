@@ -19,8 +19,8 @@ def solve_consumption(par):
 
     # Last period, cosume what is left:
     sol.C[T-1,:] = grid_M.copy()
-    sol.C1[T-1,:] = 0.5*sol.C[T-1,:].copy()
-    sol.C2[T-1,:] = 0.5*sol.C[T-1,:].copy()
+    #sol.C1[T-1,:] = 0.5*sol.C[T-1,:].copy()
+    #sol.C2[T-1,:] = 0.5*sol.C[T-1,:].copy()
     sol.V[T-1,:] = util(sol.C1[T-1,:],sol.C2[T-1,:],par)
 
     # Before last period
@@ -76,7 +76,6 @@ def value_of_choice(x, m,M_next,V_next,par):
     V_guess = util(c1,c2,par)+par.beta*EV_next
 
     return V_guess
-
 
 def util(c1,c2,par):
     return theta(par.theta0,par.theta1,par.N)*(c1**(1.0-par.rho))/(1.0-par.rho) + (1-theta(par.theta0,par.theta1,par.N))*(c2**(1.0-par.rho))/(1.0-par.rho)

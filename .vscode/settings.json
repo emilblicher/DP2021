@@ -1,3 +1,7 @@
 {
+<<<<<<< HEAD
     "python.pythonPath": "/Users/Messias/opt/anaconda3/bin/python"
+=======
+    "python.pythonPath": "/usr/local/Caskroom/miniconda/base/bin/python"
+>>>>>>> c7c8e59929cbdf5a3ced23f7d9b3b03147a1e5de
 }
