@@ -1,6 +1,7 @@
 # Import package
 import numpy as np
 import tools
+import scipy.optimize as optimize
 
 def setup():
     class par: pass
@@ -16,6 +17,9 @@ def setup():
 
     # Income parameters
     par.G = 1.03
+    par.num_M = 50
+    par.M_max = 10
+    par.grid_M = tools.nonlinspace(1.0e-6,par.M_max,par.num_M,1.1) # non-linear spaced points: like np.linspace with unequal spacing
 
     par.sigma_xi = 0.1
     par.sigma_psi = 0.1
@@ -27,13 +31,10 @@ def setup():
     par.R = 1.04
     par.kappa = 0.0
 
-    # Numerical integration and grids
-    par.a_max = 20 # maximum point in grid for a
-    par.a_phi = 1.1 # curvature parameters
-
+    # Numerical integration
     par.Nxi  = 8 # number of quadrature points for xi
     par.Npsi = 8 # number of quadrature points for psi
-    par.Na = 500 # number of points in grid for a
+
 
     # 6. simulation
     par.sim_mini = 2.5 # initial m in simulation
@@ -51,7 +52,7 @@ def create_grids(par):
     eps,eps_w = tools.GaussHermite_lognorm(par.sigma_xi,par.Nxi)
     par.psi,par.psi_w = tools.GaussHermite_lognorm(par.sigma_psi,par.Npsi)
 
-        #define xi
+    #define xi
     if par.low_p > 0:
         par.xi =  np.append(par.low_val+1e-8, (eps-par.low_p*par.low_val)/(1-par.low_p), axis=None) # +1e-8 makes it possible to take the log in simulation if low_val = 0
         par.xi_w = np.append(par.low_p, (1-par.low_p)*eps_w, axis=None)
@@ -59,43 +60,17 @@ def create_grids(par):
         par.xi = eps
         par.xi_w = eps_w
 
-        #Vectorize all
+    #Vectorize all
     par.xi_vec = np.tile(par.xi,par.psi.size)       # Repeat entire array x times
     par.psi_vec = np.repeat(par.psi,par.xi.size)    # Repeat each element of the array x times
     par.xi_w_vec = np.tile(par.xi_w,par.psi.size)
     par.psi_w_vec = np.repeat(par.psi_w,par.xi.size)
 
     par.w = par.xi_w_vec * par.psi_w_vec
-    assert (1-sum(par.w) < 1e-8), 'the weights does not sum to 1'
+    assert (1-sum(par.w) < 1e-8), 'the weights do not sum to 1'
     
     par.Nshocks = par.w.size    # count number of shock nodes
     
-    #3. Minimum a
-    if par.kappa == 0:
-        par.a_min = np.zeros([par.T,1])
-    else:
-
-        #Using formula from slides
-        psi_min = min(par.psi)
-        xi_min = min(par.xi)
-        par.a_min = np.nan + np.zeros([par.T,1])
-        for t in range(par.T-1,-1,-1):
-            if t >= par.Tr:
-                Omega = 0  # No debt in final period
-            elif t == par.T-1:
-                Omega = par.R**(-1)*par.G*psi_min*xi_min
-            else: 
-                Omega = par.R**(-1)*(min(Omega,par.kappa)+xi_min)*par.G*psi_min
-            
-            par.a_min[t]=-min(Omega,par.kappa)*par.G*psi_min
-    
-    
-    #4. End of period assets
-    par.grid_a = np.nan + np.zeros([par.T,par.Na])
-    for t in range(par.T):
-        par.grid_a[t,:] = tools.nonlinspace(par.a_min[t]+1e-8,par.a_max,par.Na,par.a_phi)
-
-
     #5.  Conditions
     par.FHW = par.G/par.R # Finite human wealth <1
     par.AI = (par.R*par.beta)**(1/par.rho) # absolute impatience <1
@@ -110,83 +85,113 @@ def create_grids(par):
     return par
 
 def solve(par):
-
+    
     # Initialize
     class sol: pass
-    shape=(par.T,par.Na+1)
+    shape=(par.T,par.num_M)
     sol.c1 = np.nan+np.zeros(shape)
     sol.c2 = np.nan+np.zeros(shape)
-    sol.m = np.nan+np.zeros(shape)
-    
+    sol.V = np.nan+np.zeros(shape)
+  
     # Last period, (= consume all) 
-    sol.m[par.T-1,:]= np.linspace(0,par.a_max,par.Na+1)
-    sol.c1[par.T-1,:]= sol.m[par.T-1,:].copy() / (1+(0.6/0.4)**(par.rho))
-    sol.c2[par.T-1,:]= sol.m[par.T-1,:].copy() - sol.c1[par.T-1,:].copy()
+    sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,par.N))/theta(par.theta0,par.theta1,par.N))**(par.rho))
+    sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
+    sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par)
 
-    # Before last period
-    for t in range(par.T-2,-1,-1):
-        # Solve model with EGM
-        sol = EGM(sol,t,par)
+    # before last period
+    for t in range(par.T-2, -1, -1): 
+       
+        #Initalize
+        M_next = par.grid_M
+        V_next = sol.V[t+1,:]
 
-        # add zero consumption
-        sol.m[t,0] = par.a_min[t,0]
-        sol.c1[t,0] = 0
-        sol.c2[t,0] = 0
+        #loop over states
+        for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
+            
+            # call the optimizer
+            bounds = ((0,m),(0,m))
+            obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V_next,par)
+            x0 = np.array([0.1,0.1]) # define initial values
+            res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
+
+            sol.V[t,im] = -res.fun
+            sol.c1[t,im] = res.x[0]
+            sol.c2[t,im] = res.x[1]
     
     return sol
 
-def EGM (sol,t,par):
-    for i_a,a in enumerate(par.grid_a[t,:]):
+def value_of_choice(x,m,M_next,t,V_next,par):
 
-        if t+1<= par.Tr: # No pension in the next period
-            fac = par.G*par.psi_vec
-            w = par.w
-            xi = par.xi_vec
+    #"unpack" c1
+    if type(x) == np.ndarray: # vector-type: depends on the type of solver used
+        c1 = x[0] 
+        c2 = x[1]
+    else:
+        c = x
+    
+    a = m - c1 - c2
+
+    EV_next = 0.0 #Initialize
+    if t+1<= par.Tr: # No pension in the next period
+        #for psi in par.psi_vec:
+            #for xi in par.xi_vec:
+                #fac = par.G*psi
+                #w = par.w
+                #xi = par.xi
+                #inv_fac = 1/fac
+
+                # Future m and c
+                #M_plus = inv_fac*par.R*a+xi
+                #V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
+                #EV_next += w*V_plus
+
+        for i in range(0,len(par.psi_vec)):
+            fac = par.G*par.psi_vec[i]
+            w = par.w[i]
+            xi = par.xi_vec[i]
             inv_fac = 1/fac
 
             # Future m and c
-            m_plus = inv_fac*par.R*a+xi
-            c1_plus = tools.interp_linear_1d(sol.m[t+1,:],sol.c1[t+1,:], m_plus) 
-            c2_plus = tools.interp_linear_1d(sol.m[t+1,:],sol.c2[t+1,:], m_plus)
-        else:
-            fac = par.G
-            w = 1
-            xi = 1
-            inv_fac = 1/fac
+            M_plus = inv_fac*par.R*a+par.xi_vec[i]
+            V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
+            EV_next += w*V_plus
+    else: 
+        fac = par.G
+        w = 1
+        xi = 1
+        inv_fac = 1/fac
 
-            # Future m and c
-            m_plus = inv_fac*par.R*a+xi
-            c1_plus = tools.interp_linear_1d_scalar(sol.m[t+1,:],sol.c1[t+1,:], m_plus)
-            c2_plus = tools.interp_linear_1d_scalar(sol.m[t+1,:],sol.c2[t+1,:], m_plus)
+        # Futute m and c
+        M_plus = inv_fac*par.R*a+xi
+        V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
+        EV_next += w*V_plus 
+    
+    
+    #Expected Value next period given states and choice
+    #EV_next = 0.0 #Initialize
+    #for s,eps in enumerate(par.eps):
+         
+        #M_plus = par.R*(m - c1 - c2) + eps
+        #V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
 
-        # Future marginal utility
-        marg_u_plus1 = marg_util_c1(fac*c1_plus,par)
-        marg_u_plus2 = marg_util_c2(fac*c2_plus,par)
-        avg_marg_u_plus1 = np.sum(w*marg_u_plus1)
-        avg_marg_u_plus2 = np.sum(w*marg_u_plus2)
+        # weight on the shock 
+        #w = par.eps_w[s]
 
-        # Current C and m
-        sol.c1[t,i_a+1]=inv_marg_util(par.beta*par.R*avg_marg_u_plus1,par)
-        sol.c2[t,i_a+1]=inv_marg_util(par.beta*par.R*avg_marg_u_plus2,par)
-        sol.m[t,i_a+1]=a+sol.c1[t,i_a+1]+sol.c2[t,i_a+1]
+        #EV_next +=w*V_plus 
+  
 
-    return sol
+    # Value of choice
+    V_guess = util(c1,c2,par)+par.beta*EV_next
 
-def marg_util(c,par):
-    return c**(-par.rho)
+    return V_guess
 
 
-def marg_util_c1(c1,par):
-    return 0.4*c1**(-par.rho)
 
-def marg_util_c2(c2,par):
-    return (1-0.4)*c2**(-par.rho)
+def util(c1,c2,par):
+    return theta(par.theta0,par.theta1,par.N)*(c1**(1.0-par.rho))/(1.0-par.rho) + (1-theta(par.theta0,par.theta1,par.N))*(c2**(1.0-par.rho))/(1.0-par.rho)
 
-def rel_weights(N_child,par):
-    return (1+np.exp(-(par.theta_0+par.theta1*N_child)))**(-1)
-
-def inv_marg_util(u,par):
-    return u**(-1/par.rho)
+def theta(theta0,theta1,N):
+    return 1/(1+(np.exp(-(theta0+theta1*N))))
 
 
 def simulate (par,sol):
