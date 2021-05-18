@@ -5,9 +5,7 @@ import matplotlib.pyplot as plt
 plt.style.use('seaborn-whitegrid')
 
 # load modules related to this exercise
-import tools
-import VFI. as model
-
+import model_project as model
 
 par = model.setup()
 
@@ -17,3 +15,5 @@ par.N = 2
 
 par = model.create_grids(par)
 sol = model.solve(par)
+
+util(10,10,par)

@@ -12,7 +12,7 @@ def setup():
     par.Tr = 65-par.age_min # Retirement age, no retirement if TR=T
     
     # Preferences
-    par.rho = 2
+    par.rho = 0.5
     par.beta = 0.96
 
     # Income parameters
