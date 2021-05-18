@@ -8,8 +8,8 @@ def setup():
 
     # Demograhpics
     par.age_min = 25 # Only relevant for figures
-    par.T = 90-par.age_min
-    par.Tr = 65-par.age_min # Retirement age, no retirement if TR=T
+    par.T = 85-par.age_min
+    par.Tr = 60-par.age_min # Retirement age, no retirement if TR=T
     
     # Preferences
     par.rho = 0.5
