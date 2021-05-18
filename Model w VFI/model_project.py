@@ -2,6 +2,7 @@
 import numpy as np
 import tools
 import scipy.optimize as optimize
+import pandas as pd
 
 def setup():
     class par: pass
@@ -10,6 +11,10 @@ def setup():
     par.age_min = 25 # Only relevant for figures
     par.T = 85-par.age_min
     par.Tr = 60-par.age_min # Retirement age, no retirement if TR=T
+
+    # children
+    par.num_n = 3 # maximum number of children
+    par.age_fer = 45 # maximum age of fertility
     
     # Preferences
     par.rho = 0.5
@@ -94,7 +99,7 @@ def solve(par):
     sol.V = np.nan+np.zeros(shape)
   
     # Last period, (= consume all) 
-    sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,par.N))/theta(par.theta0,par.theta1,par.N))**(par.rho))
+    sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,par.N))/theta(par.theta0,par.theta1,par.N))**(1/par.rho))
     sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
     sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par)
 
@@ -133,18 +138,6 @@ def value_of_choice(x,m,M_next,t,V_next,par):
 
     EV_next = 0.0 #Initialize
     if t+1<= par.Tr: # No pension in the next period
-        #for psi in par.psi_vec:
-            #for xi in par.xi_vec:
-                #fac = par.G*psi
-                #w = par.w
-                #xi = par.xi
-                #inv_fac = 1/fac
-
-                # Future m and c
-                #M_plus = inv_fac*par.R*a+xi
-                #V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
-                #EV_next += w*V_plus
-
         for i in range(0,len(par.psi_vec)):
             fac = par.G*par.psi_vec[i]
             w = par.w[i]
@@ -165,33 +158,45 @@ def value_of_choice(x,m,M_next,t,V_next,par):
         M_plus = inv_fac*par.R*a+xi
         V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
         EV_next += w*V_plus 
-    
-    
-    #Expected Value next period given states and choice
-    #EV_next = 0.0 #Initialize
-    #for s,eps in enumerate(par.eps):
-         
-        #M_plus = par.R*(m - c1 - c2) + eps
-        #V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
-
-        # weight on the shock 
-        #w = par.eps_w[s]
-
-        #EV_next +=w*V_plus 
-  
 
     # Value of choice
-    V_guess = util(c1,c2,par)+par.beta*EV_next
+    V_guess = util(c1,c2,N,par)+par.beta*EV_next
 
     return V_guess
 
 
 
-def util(c1,c2,par):
-    return theta(par.theta0,par.theta1,par.N)*(c1**(1.0-par.rho))/(1.0-par.rho) + (1-theta(par.theta0,par.theta1,par.N))*(c2**(1.0-par.rho))/(1.0-par.rho)
+def util(c1,c2,N,par):
+    return theta(par.theta0,par.theta1,N)*(c1**(1.0-par.rho))/(1.0-par.rho) + (1-theta(par.theta0,par.theta1,par.N))*(c2**(1.0-par.rho))/(1.0-par.rho)
 
 def theta(theta0,theta1,N):
     return 1/(1+(np.exp(-(theta0+theta1*N))))
+
+def child_prob(N,Age,par):
+    age_min = par.age_min
+    age_fer = par.age_fer # maximum age of fertility
+    T = 35
+    num_n = par.num_n
+
+    # 2. Child arrival probabilities
+    # i. allocate memory
+    shape = (num_n+1,T+1)
+    p = np.nan + np.zeros(shape)
+
+    # ii. load calibrations
+    birth_df = pd.read_excel('cali_birth_prob.xls') 
+    birth_df = birth_df.groupby(['nkids','age']).mean().reset_index()
+
+# iii. Pick out relevant based on age and number of children
+    age_grid = np.array([age for age in range(age_min,age_min+T+1)])
+    for n in range(num_n+1):
+        for iage,age in enumerate(age_grid):
+            p[n,iage] = birth_df.loc[ (birth_df['age']==age) & (birth_df['nkids']==n) ,['birth']].to_numpy()
+
+            if (age>age_fer) or (n==(num_n)):
+                p[n,iage] = 0.0
+
+    return p[N,Age]
 
 
 def simulate (par,sol):
