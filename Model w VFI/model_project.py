@@ -46,7 +46,7 @@ def setup():
 def create_grids(par):
     #1. Check parameters
     assert (par.rho >= 0), 'not rho > 0'
-    assert (par.kappa >= 0), 'not lambda > 0'
+    assert (par.kappa >= 0), 'not kappa > 0'
 
     #2. Shocks
     eps,eps_w = tools.GaussHermite_lognorm(par.sigma_xi,par.Nxi)
