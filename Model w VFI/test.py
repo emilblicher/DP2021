@@ -38,7 +38,6 @@ for n in range(num_n+1):
 # weighting function
 par.theta0 = 0
 par.theta1 = 0.2
-par.N = 2
 
 par = model.create_grids(par)
 sol = model.solve(par)

@@ -97,11 +97,13 @@ def solve(par):
     sol.c1 = np.nan+np.zeros(shape)
     sol.c2 = np.nan+np.zeros(shape)
     sol.V = np.nan+np.zeros(shape)
+    # households have 0 children in last period
+    N = 0
   
     # Last period, (= consume all) 
     sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,par.N))/theta(par.theta0,par.theta1,par.N))**(1/par.rho))
     sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
-    sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par)
+    sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],N,par)
 
     # before last period
     for t in range(par.T-2, -1, -1): 
@@ -136,6 +138,8 @@ def value_of_choice(x,m,M_next,t,V_next,par):
     
     a = m - c1 - c2
 
+    age = t + 25
+
     EV_next = 0.0 #Initialize
     if t+1<= par.Tr: # No pension in the next period
         for i in range(0,len(par.psi_vec)):
@@ -144,20 +148,22 @@ def value_of_choice(x,m,M_next,t,V_next,par):
             xi = par.xi_vec[i]
             inv_fac = 1/fac
 
+
             # Future m and c
             M_plus = inv_fac*par.R*a+par.xi_vec[i]
             V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
             EV_next += w*V_plus
-    else: 
-        fac = par.G
-        w = 1
-        xi = 1
-        inv_fac = 1/fac
+            
+        else: 
+            fac = par.G
+            w = 1
+            xi = 1
+            inv_fac = 1/fac
 
-        # Futute m and c
-        M_plus = inv_fac*par.R*a+xi
-        V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
-        EV_next += w*V_plus 
+            # Future m and c
+            M_plus = inv_fac*par.R*a+xi
+            V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
+            EV_next += w*V_plus 
 
     # Value of choice
     V_guess = util(c1,c2,N,par)+par.beta*EV_next
