@@ -117,7 +117,7 @@ def solve(par):
             
             # call the optimizer
             bounds = ((0,m),(0,m))
-            obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V_next,par)
+            obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V_next,N,par)
             x0 = np.array([0.1,0.1]) # define initial values
             res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
 
@@ -127,7 +127,7 @@ def solve(par):
     
     return sol
 
-def value_of_choice(x,m,M_next,t,V_next,par):
+def value_of_choice(x,m,M_next,t,V_next,N,par):
 
     #"unpack" c1
     if type(x) == np.ndarray: # vector-type: depends on the type of solver used
@@ -139,15 +139,15 @@ def value_of_choice(x,m,M_next,t,V_next,par):
     a = m - c1 - c2
 
     age = t + 25
+    p = child_prob(N,age,par)
 
     EV_next = 0.0 #Initialize
     if t+1<= par.Tr: # No pension in the next period
-        for i in range(0,len(par.psi_vec)):
+        for i in range(0,len(par.w)):
             fac = par.G*par.psi_vec[i]
             w = par.w[i]
             xi = par.xi_vec[i]
             inv_fac = 1/fac
-
 
             # Future m and c
             M_plus = inv_fac*par.R*a+par.xi_vec[i]
@@ -162,8 +162,8 @@ def value_of_choice(x,m,M_next,t,V_next,par):
 
             # Future m and c
             M_plus = inv_fac*par.R*a+xi
-            V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
-            EV_next += w*V_plus 
+            V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus)
+            EV_next += w*V_plus
 
     # Value of choice
     V_guess = util(c1,c2,N,par)+par.beta*EV_next
@@ -201,7 +201,7 @@ def child_prob(N,Age,par):
 
             if (age>age_fer) or (n==(num_n)):
                 p[n,iage] = 0.0
-
+    Age = Age - 25
     return p[N,Age]
 
 
