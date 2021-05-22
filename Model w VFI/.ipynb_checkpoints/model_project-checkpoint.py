@@ -1,16 +1,20 @@
 # Import package
 import numpy as np
-import pandas as pd
 import tools
 import scipy.optimize as optimize
+import pandas as pd
 
 def setup():
     class par: pass
 
     # Demograhpics
     par.age_min = 25 # Only relevant for figures
-    par.T = 90-par.age_min
+    par.T = 85-par.age_min
     par.Tr = 60-par.age_min # Retirement age, no retirement if TR=T
+
+    # children
+    par.num_n = 3 # maximum number of children
+    par.age_fer = 45 # maximum age of fertility
     
     # Preferences
     par.rho = 0.5
@@ -31,7 +35,6 @@ def setup():
     # Saving and borrowing
     par.R = 1.04
     par.kappa = 0.0
-    par.N = 0
 
     # Numerical integration
     par.Nxi  = 8 # number of quadrature points for xi
@@ -48,7 +51,7 @@ def setup():
 def create_grids(par):
     #1. Check parameters
     assert (par.rho >= 0), 'not rho > 0'
-    assert (par.kappa >= 0), 'not lambda > 0'
+    assert (par.kappa >= 0), 'not kappa > 0'
 
     #2. Shocks
     eps,eps_w = tools.GaussHermite_lognorm(par.sigma_xi,par.Nxi)
@@ -94,61 +97,39 @@ def solve(par):
     sol.c1 = np.nan+np.zeros(shape)
     sol.c2 = np.nan+np.zeros(shape)
     sol.V = np.nan+np.zeros(shape)
-    
-    N = 0 # initialize
-    
+    # households have 0 children in last period
+    N = 0
+  
     # Last period, (= consume all) 
     sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,N))/theta(par.theta0,par.theta1,N))**(1/par.rho))
     sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
-    sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par,N)
-
-    p = child_birth()
+    sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],N,par)
 
     # before last period
-    for t in range(par.T-2, -1, -1): 
+    for t in range(par.T-2, -1, -1):
        
         #Initalize
         M_next = par.grid_M
+        #V_next = sol.V[t+1,:]
 
-        for n in range(4):
+        V1_next = util(sol.c1[t+1,:],sol.c2[t+1,:],N+1,par)
+        V2_next = util(sol.c1[t+1,:],sol.c2[t+1,:],N,par)
+        #loop over states
+        for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
-            if n < 3:
-                V1_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n+1)
-                V2_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n)
+            # call the optimizer
+            bounds = ((0,m),(0,m))
+            obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,N,par)
+            x0 = np.array([0.1,0.1]) # define initial values
+            res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
 
-                for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
-            
-                    # call the optimizer
-                    bounds = ((0,m),(0,m))
-                    obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
-                    x0 = np.array([0.1,0.1]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
-
-                    sol.V[t,im] = -res.fun
-                    sol.c1[t,im] = res.x[0]
-                    sol.c2[t,im] = res.x[1]
-            
-            else:
-                V1_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n)
-                V2_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n)
-
-                for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
-            
-                    # call the optimizer
-                    bounds = ((0,m),(0,m))
-                    obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
-                    x0 = np.array([0.1,0.1]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
-
-                    sol.V[t,im] = -res.fun
-                    sol.c1[t,im] = res.x[0]
-                    sol.c2[t,im] = res.x[1]
-            #loop over states
-
+            sol.V[t,im] = -res.fun
+            sol.c1[t,im] = res.x[0]
+            sol.c2[t,im] = res.x[1]
     
     return sol
 
-def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
+def value_of_choice(x,m,M_next,t,V1_next,V2_next,N,par):
 
     #"unpack" c1
     if type(x) == np.ndarray: # vector-type: depends on the type of solver used
@@ -158,13 +139,12 @@ def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
         c = x
     
     a = m - c1 - c2
-    
+
+    p = child_prob(par)
+
     EV_next = 0.0 #Initialize
     if t+1<= par.Tr: # No pension in the next period
-
-
-
-        for i in range(0,len(par.psi_vec)):
+        for i in range(0,len(par.w)):
             fac = par.G*par.psi_vec[i]
             w = par.w[i]
             xi = par.xi_vec[i]
@@ -174,10 +154,9 @@ def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
             M_plus = inv_fac*par.R*a+par.xi_vec[i]
             V1_plus = tools.interp_linear_1d_scalar(M_next,V1_next,M_plus) 
             V2_plus = tools.interp_linear_1d_scalar(M_next,V2_next,M_plus)
-
-            EV_next += p[N,t]*w*V1_plus + (1-p[N,t])*w*V2_plus
-
-    else: 
+            EV_next += p[N,t]*w*V1_plus+(1-p[N,t])*w*V2_plus
+            
+    else:
         fac = par.G
         w = 1
         xi = 1
@@ -185,42 +164,27 @@ def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
 
         # Future m and c
         M_plus = inv_fac*par.R*a+xi
-        V_plus = tools.interp_linear_1d_scalar(M_next,V2_next,M_plus) 
-        EV_next += w*V_plus 
-
-
-    #Expected Value next period given states and choice
-    #EV_next = 0.0 #Initialize
-    #for s,eps in enumerate(par.eps):
-         
-        #M_plus = par.R*(m - c1 - c2) + eps
-        #V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
-
-        # weight on the shock 
-        #w = par.eps_w[s]
-
-        #EV_next +=w*V_plus 
-  
+        V_plus = tools.interp_linear_1d_scalar(M_next,V2_next,M_plus)
+        EV_next += w*V_plus
 
     # Value of choice
-    V_guess = util(c1,c2,par,N)+par.beta*EV_next
+    V_guess = util(c1,c2,N,par)+par.beta*EV_next
 
     return V_guess
 
 
 
-def util(c1,c2,par,N):
-    return theta(par.theta0,par.theta1,N)*((c1**(1.0-par.rho))/(1.0-par.rho)) + (1-theta(par.theta0,par.theta1,N))*((c2**(1.0-par.rho))/(1.0-par.rho))
+def util(c1,c2,N,par):
+    return theta(par.theta0,par.theta1,N)*(c1**(1.0-par.rho))/(1.0-par.rho) + (1-theta(par.theta0,par.theta1,N))*(c2**(1.0-par.rho))/(1.0-par.rho)
 
 def theta(theta0,theta1,N):
     return 1/(1+(np.exp(-(theta0+theta1*N))))
 
-def child_birth():
-    # 1. settings
-    age_min = 25 # age at which the model starts
-    age_fer = 45 # maximum age of fertility
-    T = 35       # maximum periods from age_min needed to solve the model
-    num_n = 3    # maximum number of children
+def child_prob(par):
+    age_min = par.age_min
+    age_fer = par.age_fer # maximum age of fertility
+    T = 35
+    num_n = par.num_n
 
     # 2. Child arrival probabilities
     # i. allocate memory
@@ -231,7 +195,7 @@ def child_birth():
     birth_df = pd.read_excel('cali_birth_prob.xls') 
     birth_df = birth_df.groupby(['nkids','age']).mean().reset_index()
 
-    # iii. Pick out relevant based on age and number of children
+# iii. Pick out relevant based on age and number of children
     age_grid = np.array([age for age in range(age_min,age_min+T+1)])
     for n in range(num_n+1):
         for iage,age in enumerate(age_grid):
@@ -239,8 +203,8 @@ def child_birth():
 
             if (age>age_fer) or (n==(num_n)):
                 p[n,iage] = 0.0
-                
     return p
+
 
 def simulate (par,sol):
 
