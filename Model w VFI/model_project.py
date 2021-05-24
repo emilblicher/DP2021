@@ -31,7 +31,6 @@ def setup():
     # Saving and borrowing
     par.R = 1.04
     par.kappa = 0.0
-    par.N = 0
 
     # Numerical integration
     par.Nxi  = 8 # number of quadrature points for xi
@@ -39,7 +38,7 @@ def setup():
 
 
     # 6. simulation
-    par.sim_mini = 2.5 # initial m in simulation
+    par.sim_M_ini = 2.5 # initial m in simulation
     par.simN = 500000 # number of persons in simulation
     par.simT = 100 # number of periods in simulation
 
@@ -77,7 +76,7 @@ def create_grids(par):
     par.FHW = par.G/par.R # Finite human wealth <1
     par.AI = (par.R*par.beta)**(1/par.rho) # absolute impatience <1
     par.GI = par.AI*sum(par.w*par.psi_vec**(-1))/par.G # growth impatience <1
-    par.RI = par.AI/par.R # Return impatience <1     
+    par.RI = par.AI/par.R # Return impatience <1
     par.WRI = par.low_p**(1/par.rho)*par.AI/par.R # weak return impatience <1 
     par.FVA = par.beta*sum(par.w*(par.G*par.psi_vec)**(1-par.rho)) # finite value of autarky <1
 
@@ -102,6 +101,7 @@ def solve(par):
     sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
     sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par,N)
 
+    # call child probabilities
     p = child_birth()
 
     # before last period
@@ -119,10 +119,10 @@ def solve(par):
                 for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
                     # call the optimizer
-                    bounds = ((0,m),(0,m))
+                    bounds = ((1.0e-04,m+1.0e-04),(1.0e-04,m+1.0e-04))
                     obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
-                    x0 = np.array([0.1,0.1]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
+                    x0 = np.array([1.0e-04,1.0e-04]) # define initial values
+                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='Powell')
 
                     sol.V[t,im] = -res.fun
                     sol.c1[t,im] = res.x[0]
@@ -135,15 +135,14 @@ def solve(par):
                 for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
                     # call the optimizer
-                    bounds = ((0,m),(0,m))
+                    bounds = ((1.0e-04,m+1.0e-04),(1.0e-04,m+1.0e-04))
                     obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
-                    x0 = np.array([0.1,0.1]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP')
+                    x0 = np.array([1.0e-04,1.0e-04]) # define initial values
+                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='Powell')
 
                     sol.V[t,im] = -res.fun
                     sol.c1[t,im] = res.x[0]
                     sol.c2[t,im] = res.x[1]
-            #loop over states
 
     
     return sol
@@ -157,14 +156,13 @@ def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
     else:
         c = x
     
+    # define assets
     a = m - c1 - c2
     
     EV_next = 0.0 #Initialize
     if t+1<= par.Tr: # No pension in the next period
 
-
-
-        for i in range(0,len(par.psi_vec)):
+        for i in range(len(par.psi_vec)):
             fac = par.G*par.psi_vec[i]
             w = par.w[i]
             xi = par.xi_vec[i]
@@ -186,21 +184,7 @@ def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
         # Future m and c
         M_plus = inv_fac*par.R*a+xi
         V_plus = tools.interp_linear_1d_scalar(M_next,V2_next,M_plus) 
-        EV_next += w*V_plus 
-
-
-    #Expected Value next period given states and choice
-    #EV_next = 0.0 #Initialize
-    #for s,eps in enumerate(par.eps):
-         
-        #M_plus = par.R*(m - c1 - c2) + eps
-        #V_plus = tools.interp_linear_1d_scalar(M_next,V_next,M_plus) 
-
-        # weight on the shock 
-        #w = par.eps_w[s]
-
-        #EV_next +=w*V_plus 
-  
+        EV_next += w*V_plus
 
     # Value of choice
     V_guess = util(c1,c2,par,N)+par.beta*EV_next
