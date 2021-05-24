@@ -226,6 +226,9 @@ def child_birth():
                 
     return p
 
+
+
+##########################################################################
 def simulate (par,sol):
 
     # Initialize
@@ -248,13 +251,13 @@ def simulate (par,sol):
     assert (abs(1-np.mean(sim.psi)) < 1e-4), 'The mean is not 1 in the simulation of psi'
 
     # Initial values
-    sim.m[0,:] = par.sim_mini
+    sim.m[0,:] = par.sim_M_ini
     sim.p[0,:] = 0.0
 
     # Simulation 
     for t in range(par.simT):
-        sim.c1[t,:] = tools.interp_linear_1d(sol.m[t,:],sol.c1[t,:], sim.m[t,:])
-        sim.c2[t,:] = tools.interp_linear_1d(sol.m[t,:],sol.c2[t,:], sim.m[t,:])
+        sim.c1[t,:] = tools.interp_linear_1d(par.grid_M,sol.c1[t,:], sim.m[t,:])
+        sim.c2[t,:] = tools.interp_linear_1d(par.grid_M,sol.c2[t,:], sim.m[t,:])
         sim.a[t,:] = sim.m[t,:] - sim.c1[t,:] - sim.c2[t,:]
 
         if t< par.simT-1:
@@ -275,3 +278,4 @@ def simulate (par,sol):
     sim.C2 = sim.c2*sim.P
     sim.A = sim.a*sim.P
     return sim
+    ##########################################################################
