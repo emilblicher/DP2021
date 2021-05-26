@@ -97,9 +97,11 @@ def solve(par):
     N = 0 # initialize
     
     # Last period, (= consume all) 
+    # loop over children in final period
     sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,N))/theta(par.theta0,par.theta1,N))**(1/par.rho))
     sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
     sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par,N)
+    
 
     # call child probabilities
     p = child_birth()
@@ -122,7 +124,7 @@ def solve(par):
                     bounds = ((1.0e-04,m+1.0e-04),(1.0e-04,m+1.0e-04))
                     obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
                     x0 = np.array([1.0e-04,1.0e-04]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='Powell')
+                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='Powell') # constraints with m = c1 + c2 with SLQSP-method, no loop
 
                     sol.V[t,im] = -res.fun
                     sol.c1[t,im] = res.x[0]
