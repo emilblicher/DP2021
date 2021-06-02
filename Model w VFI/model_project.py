@@ -22,6 +22,7 @@ def setup():
     par.M_max = 10
     par.grid_M = tools.nonlinspace(1.0e-6,par.M_max,par.num_M,1.1) # non-linear spaced points: like np.linspace with unequal spacing
 
+    par.N_max = 4
     par.sigma_xi = 0.1
     par.sigma_psi = 0.1
 
@@ -89,64 +90,65 @@ def solve(par):
     
     # Initialize
     class sol: pass
-    shape=(par.T,par.num_M)
+    shape=(par.T,par.N_max,par.num_M)
     sol.c1 = np.nan+np.zeros(shape)
     sol.c2 = np.nan+np.zeros(shape)
     sol.V = np.nan+np.zeros(shape)
     
-    N = 0 # initialize
-    
-    # Last period, (= consume all) 
-    # loop over children in final period
-    sol.c1[par.T-1,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,N))/theta(par.theta0,par.theta1,N))**(1/par.rho))
-    sol.c2[par.T-1,:]= par.grid_M.copy() - sol.c1[par.T-1,:].copy()
-    sol.V[par.T-1,:] = util(sol.c1[par.T-1,:],sol.c2[par.T-1,:],par,N)
-    
-
+    #N = 0 # initialize
     # call child probabilities
     p = child_birth()
+    # Last period, (= consume all) 
+    # loop over children in final period
+    for N in range(par.N_max):
 
+        sol.c1[par.T-1,N,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,N))/theta(par.theta0,par.theta1,N))**(1/par.rho))
+        sol.c2[par.T-1,N,:]= par.grid_M.copy() - sol.c1[par.T-1,N,:].copy()
+        sol.V[par.T-1,N,:] = util(sol.c1[par.T-1,N,:],sol.c2[par.T-1,N,:],par,N)
+    
     # before last period
     for t in range(par.T-2, -1, -1): 
-       
+    
         #Initalize
         M_next = par.grid_M
 
-        for n in range(4):
+        for N in range(par.N_max):
             
-            if n < 3:
-                V1_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n+1)
-                V2_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n)
+            if N < 3:
+                V1_next = sol.V[t+1,N+1,:]
+                V2_next = sol.V[t+1,N,:]
 
                 for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
                     # call the optimizer
-                    bounds = ((1.0e-04,m+1.0e-04),(1.0e-04,m+1.0e-04))
-                    obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
-                    x0 = np.array([1.0e-04,1.0e-04]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='Powell') # constraints with m = c1 + c2 with SLQSP-method, no loop
+                    bounds = ((0,None),(0,None))
+                    cons = ({'type': 'ineq', 'fun': lambda x: m-x[1]}, {'type': 'ineq', 'fun': lambda x: m-x[0]})
+                    obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p)
+                    x0 = np.array([1.0e-7,1.0e-7]) # define initial values
+                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='SLSQP',constraints=cons) # constraints with m = c1 + c2 with SLQSP-method, no loop
 
-                    sol.V[t,im] = -res.fun
-                    sol.c1[t,im] = res.x[0]
-                    sol.c2[t,im] = res.x[1]
+                    sol.V[t,N,im] = -res.fun
+                    sol.c1[t,N,im] = res.x[0]
+                    sol.c2[t,N,im] = res.x[1]
             
             else:
-                V1_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n)
-                V2_next = util(sol.c1[t+1,:],sol.c2[t+1,:],par,n)
+                V1_next = sol.V[t+1,N,:]
+                V2_next = sol.V[t+1,N,:]
 
                 for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
                     # call the optimizer
-                    bounds = ((1.0e-04,m+1.0e-04),(1.0e-04,m+1.0e-04))
-                    obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,n,p)
-                    x0 = np.array([1.0e-04,1.0e-04]) # define initial values
-                    res = optimize.minimize(obj_fun, x0, bounds=bounds, method='Powell')
+                    bounds = ((0,None),(0,None))
+                    obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p)
+                    cons = ({'type': 'ineq', 'fun': lambda x: m-x[1]}, {'type': 'ineq', 'fun': lambda x: m-x[0]})
+                    x0 = np.array([1.0e-7,1.0e-7]) # define initial values
+                    res = optimize.minimize(obj_fun, x0, bounds=bounds, constraints=cons, method='SLSQP')
 
-                    sol.V[t,im] = -res.fun
-                    sol.c1[t,im] = res.x[0]
-                    sol.c2[t,im] = res.x[1]
+                    sol.V[t,N,im] = -res.fun
+                    sol.c1[t,N,im] = res.x[0]
+                    sol.c2[t,N,im] = res.x[1]
 
-    
+        
     return sol
 
 def value_of_choice(x,m,M_next,t,V1_next,V2_next,par,N,p):
