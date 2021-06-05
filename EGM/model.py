@@ -44,7 +44,7 @@ class model_bufferstock():
         
         # Saving and borrowing
         par.R = 1.04
-        par.kappa = 0.0  # Note you cannot have a variable named "lambda" in python
+        par.lambdaa = 0.0  # Note you cannot have a variable named "lambda" in python
 
         # Numerical integration and grids
         par.a_max = 20 # maximum point in grid for a
