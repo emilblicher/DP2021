@@ -122,7 +122,7 @@ def solve(par):
                 for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
                     # call the optimizer
-                    bounds = ((1+1e-04,None),(1+1e-04,None))
+                    bounds = ((0,None),(0,None))
                     cons = ({'type': 'ineq', 'fun': lambda x: m-x[0]-x[1]})
                     obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,V_pens,par,N,p)
                     x0 = np.array([1.0e-7,1.0e-7]) # define initial values
