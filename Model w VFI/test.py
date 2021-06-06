@@ -12,7 +12,7 @@ par = model.setup()
 
 # weighting function
 par.theta0 = 0
-par.theta1 = 0.2
+par.theta1 = 0.1
 
 par = model.create_grids(par)
 sol = model.solve(par)

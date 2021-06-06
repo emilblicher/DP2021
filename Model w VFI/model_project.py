@@ -24,7 +24,7 @@ def setup():
     par.grid_M = tools.nonlinspace(1.0e-6,par.M_max,par.num_M,1.1) # non-linear spaced points: like np.linspace with unequal spacing
     par.nu = 0.75
 
-    par.N_max = 4
+    par.N_max = 3
     par.sigma_xi = 0.1
     par.sigma_psi = 0.1
 
@@ -33,7 +33,6 @@ def setup():
     
     # Saving and borrowing
     par.R = 1.04
-    par.kappa = 0.0
 
     # Numerical integration
     par.Nxi  = 8 # number of quadrature points for xi
@@ -42,7 +41,7 @@ def setup():
 
     # 6. simulation
     par.sim_M_ini = 2.5 # initial m in simulation
-    par.simN = 100000 # number of persons in simulation
+    par.simN = 2500000 # number of persons in simulation
     par.simT = par.T # number of periods in simulation
 
     return par
@@ -50,7 +49,6 @@ def setup():
 def create_grids(par):
     #1. Check parameters
     assert (par.rho >= 0), 'not rho > 0'
-    assert (par.kappa >= 0), 'not lambda > 0'
 
     #2. Shocks
     eps,eps_w = tools.GaussHermite_lognorm(par.sigma_xi,par.Nxi)
@@ -92,7 +90,7 @@ def solve(par):
     
     # Initialize
     class sol: pass
-    shape=(par.T,par.N_max,par.num_M)
+    shape=(par.T,par.N_max+1,par.num_M)
     sol.c1 = np.nan+np.zeros(shape)
     sol.c2 = np.nan+np.zeros(shape)
     sol.V = np.nan+np.zeros(shape)
@@ -102,7 +100,7 @@ def solve(par):
     p = child_birth(par)
     # Last period, (= consume all) 
     # loop over children in final period
-    for N in range(par.N_max):
+    for N in range(par.N_max+1):
 
         sol.c1[par.T-1,N,:]= par.grid_M.copy() / (1+((1-theta(par.theta0,par.theta1,N))/theta(par.theta0,par.theta1,N))**(1/par.rho))
         sol.c2[par.T-1,N,:]= par.grid_M.copy() - sol.c1[par.T-1,N,:].copy()
@@ -114,7 +112,7 @@ def solve(par):
         #Initalize
         M_next = par.grid_M
 
-        for N in range(par.N_max):
+        for N in range(par.N_max+1):
             
             if N < 3:
                 V1_next = sol.V[t+1,N+1,:]
@@ -124,7 +122,7 @@ def solve(par):
                 for im,m in enumerate(par.grid_M):   # enumerate automatically unpack m
             
                     # call the optimizer
-                    bounds = ((0,None),(0,None))
+                    bounds = ((1+1e-04,None),(1+1e-04,None))
                     cons = ({'type': 'ineq', 'fun': lambda x: m-x[0]-x[1]})
                     obj_fun = lambda x: - value_of_choice(x,m,M_next,t,V1_next,V2_next,V_pens,par,N,p)
                     x0 = np.array([1.0e-7,1.0e-7]) # define initial values
@@ -254,7 +252,7 @@ def simulate (par,sol,n):
     # Shocks
     shocki = np.random.choice(par.Nshocks,(par.T,par.simN),replace=True,p=par.w) #draw values between 0 and Nshocks-1, with probability w
     sim.psi = par.psi_vec[shocki]
-    sim.xi = par.xi_vec[shocki]
+    sim.xi = par.xi_vec[shocki] 
 
         #check it has a mean of 1
     assert (abs(1-np.mean(sim.xi)) < 1e-4), 'The mean is not 1 in the simulation of xi'
