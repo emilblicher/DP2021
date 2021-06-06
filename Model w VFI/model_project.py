@@ -41,7 +41,7 @@ def setup():
 
     # 6. simulation
     par.sim_M_ini = 2.5 # initial m in simulation
-    par.simN = 2500000 # number of persons in simulation
+   #par.simN = 2500000 # number of persons in simulation, set in simulation
     par.simT = par.T # number of periods in simulation
 
     return par
@@ -235,9 +235,7 @@ def child_birth(par):
     return p
 
 ##########################################################################
-def simulate (par,sol,n):
-
-    par.simN = 100000
+def simulate (par,sol,n=4):
 
     # Initialize
     class sim: pass
